@@ -1,28 +1,36 @@
 import * as express from 'express';
-// import * as session from 'express-session';
+import * as session from 'express-session';
 import { v4 as uuidv4 } from 'uuid';
 import * as cors from 'cors';
 import * as morgan from 'morgan';
 import * as https from 'https';
-// import * as expressMySqlSession from 'express-mysql-session';
-// import * as passport from 'passport';
+import * as expressMySqlSession from 'express-mysql-session';
+import * as passport from 'passport';
 require('dotenv').config();
 
-import { utilsService } from './lib/utils.service';
-import { stringValidator } from './lib/stringValidator.service';
+import { Account } from './models';
 
+import { utilsService } from './lib/utilities.service';
+import { accountsDb } from './lib/connectors/db/accounts-db';
+import { initializePassportLocalStrategy } from './lib/authenticators/passport-local.mw';
+
+import { auditLoggerInterceptResponse } from './lib/middlewares/logger-interception-response.middleware';
+import { startupDevelopmentModeFunctions } from './lib/startup-functions/dev.service';
 
 import { IndexRoutes } from './routes/index';
+import { AuthLoginRoutes } from './routes/auth/login';
+import { AuthLogoutRoutes } from './routes/auth/logout';
+import { Error404Routes } from './routes/errors/error-404';
 
 
 
 
-// declare module 'express-session' {
-//     export interface SessionData {
-//         user: Account;
-//         created_at: string | Date;
-//     }
-// }
+declare module 'express-session' {
+    export interface SessionData {
+        user: Account;
+        created_at: string | Date;
+    }
+}
 
 
 class App {
@@ -32,7 +40,7 @@ class App {
     constructor() {
 
         this.app = express(); // create express application instance
-        this.app.set('port', process.env.BACKEND_PORT); // define the port globally
+        this.app.set('PORT', process.env.BACKEND_PORT || 8080); // define the port globally
 
         this.config();
         this.routes();
@@ -42,7 +50,8 @@ class App {
 
 
     private domains_list = [
-        'http://localhost:4200'
+        'http://localhost:4200',
+        'https://localhost:4200'
     ];
 
 
@@ -58,34 +67,34 @@ class App {
 
 
         // Handle user sessions
-        // const mySQLSessionStore = expressMySqlSession(session);
-        // const sessionStore = new mySQLSessionStore({
-        //     checkExpirationInterval: 900000, // clear expired sessions every 15 minutes
-        //     schema: {
-        //         tableName: 'sessions',
-        //         columnNames: {
-        //             session_id: 'sid',
-        //             expires: 'expires',
-        //             data: 'data'
-        //         }
-        //     }
-        // }, accountsDb._mysql.createPool(accountsDb.poolConfig));
+        const mySQLSessionStore = expressMySqlSession(session);
+        const sessionStore = new mySQLSessionStore({
+            checkExpirationInterval: 900000, // clear expired sessions every 15 minutes
+            schema: {
+                tableName: 'sessions',
+                columnNames: {
+                    session_id: 'sid',
+                    expires: 'expires',
+                    data: 'data'
+                }
+            }
+        }, accountsDb._mysql.createPool(accountsDb.poolConfig));
 
 
-        // this.app.use(session({ // https://www.npmjs.com/package/express-session
-        //     secret: process.env.SESSION_PUBLIC_KEY,
-        //     name: 'bizyhive.sid',
-        //     cookie: {
-        //         httpOnly: true, // Ensures the cookie is sent only over HTTP(S), not client JavaScript, helping to protect against cross-site scripting attacks.
-        //         secure: true, // Ensures the browser only sends the cookie over HTTPS.
-        //         maxAge: 3 * 24 * 60 * 60 * 1000,
-        //         sameSite: 'none',
-        //     },
-        //     saveUninitialized: false,
-        //     resave: true,
-        //     store: sessionStore, // session store
-        //     genid: (req: express.Request) => uuidv4()
-        // }));
+        this.app.use(session({ // https://www.npmjs.com/package/express-session
+            secret: process.env.SESSION_PUBLIC_KEY,
+            name: 'schillz_management_app.sid',
+            cookie: {
+                httpOnly: true, // Ensures the cookie is sent only over HTTP(S), not client JavaScript, helping to protect against cross-site scripting attacks.
+                secure: true, // Ensures the browser only sends the cookie over HTTPS.
+                maxAge: 3 * 24 * 60 * 60 * 1000,
+                sameSite: 'none',
+            },
+            saveUninitialized: false,
+            resave: true,
+            store: sessionStore, // session store
+            genid: (req: express.Request) => uuidv4()
+        }));
 
 
 
@@ -117,21 +126,28 @@ class App {
         this.app.set('trust proxy', true);
 
 
-        // // routes tracker
-        const accessLogStream = utilsService.fs.createWriteStream(
-            utilsService.path.join(__dirname, 'access.log'),
-            { flags: 'a' }
-        );
-        this.app.use(morgan(':method :url :status :res[content-length] - :response-time ms', { stream: accessLogStream }));
+        // routes tracker
+        this.app.use(morgan(':method :url :status :res[content-length] - :response-time ms', {
+            stream: utilsService.fs.createWriteStream(
+                utilsService.path.join(__dirname, './logs/access.log'),
+                { flags: 'a' }
+            )
+        }));
+
+
+
+        // audit the requests & responses --- START
+        this.app.use(auditLoggerInterceptResponse);
+        // audit the requests & responses --- END
 
 
 
 
 
         // configure passport
-        // this.app.use(passport.initialize());
-        // this.app.use(passport.authenticate('session'));
-        // initializePassportLocalStrategy.initPassport(this.app);
+        this.app.use(passport.initialize());
+        this.app.use(passport.authenticate('session'));
+        initializePassportLocalStrategy.initPassport(this.app);
 
 
 
@@ -144,18 +160,23 @@ class App {
                 cert: utilsService.fs.readFileSync(utilsService.path.join(__dirname, '/config/certs/server.cert'))
             }, this.app);
 
-            https_server.listen(this.app.get('port'), () => {
-                console.log(`Bizyhive - Copyright 20[2-9][0-9] - Aespherra`);
+            https_server.listen(this.app.get('PORT'), async () => {
+                await startupDevelopmentModeFunctions.deleteResponseHistory();      // delete response_log from database
+                await startupDevelopmentModeFunctions.deleteSystemErrorsHistory();  // delete system errors from database
+
+                console.log(utilsService.chalk.bold(`Schillz App - Copyright 20[2-9][0-9] - Aespherra`));
+                console.log(`https://schillz.com`);
                 console.log(`https://aespherra.com`);
-                console.log(`https://bizyhive.com`);
-                console.log(`Server is running on port: ${this.app.get('port')} (https://localhost:${this.app.get('port')})`);
+                console.log(`Server is running on port: ${this.app.get('PORT')} (https://localhost:${this.app.get('PORT')})`);
+                console.log('');
+                console.log('');
             });
 
         } else
-            this.app.listen(this.app.get('port'), () => {
-                console.log(`Bizyhive - Copyright 20[2-9][0-9] - Aespherra`);
+            this.app.listen(this.app.get('PORT'), () => {
+                console.log(utilsService.chalk.bold(`Schillz App - Copyright 20[2-9][0-9] - Aespherra`));
+                console.log(`https://schillz.com`);
                 console.log(`https://aespherra.com`);
-                console.log(`https://bizyhive.com`);
             });
 
     }
@@ -165,7 +186,15 @@ class App {
     // Server routing
     private routes(): void {
 
-        new IndexRoutes().routes(this.app);
+        // index routes
+        new IndexRoutes().createRoutes(this.app);
+
+        // error routes
+        new Error404Routes().createRoutes(this.app);        // error 404
+
+        // auth routes
+        new AuthLoginRoutes().createRoutes(this.app);       // login
+        new AuthLogoutRoutes().createRoutes(this.app);      // logout
 
     }
 

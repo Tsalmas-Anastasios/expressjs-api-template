@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction, query } from 'express';
 // import { config } from '../config';
-import { utilsService } from './utils.service';
+import { utilsService } from './utilities.service';
 require('dotenv').config();
 
 
@@ -36,6 +36,46 @@ class StringValidator {
         });
 
         return diff;
+    }
+
+
+
+
+    // check password length
+    checkPasswordLength(password: string): boolean {
+
+        if (password.length < 8 || password.length > 20)
+            return false;
+
+        return true;
+
+    }
+
+
+    // password should contain: A-Z, a-z, 0-9, !@#$%^&*
+    checkPasswordStrength(password: string): boolean {
+
+        try {
+
+            const isUpperCase = new RegExp(/(?=.*[A-Z])/g);
+            const isSpecialChar = new RegExp(/(?=.*[!@#$%^&*])/g);
+            const isLowerCase = new RegExp(/(?=.*[a-z])/g);
+            const isNumeric = new RegExp(/(?=.*[0-9])/g);
+
+
+            if (password.match(isUpperCase)
+                && password.match(isSpecialChar)
+                && password.match(isLowerCase)
+                && password.match(isNumeric))
+                return true;
+
+
+            return false;
+
+        } catch (error) {
+            return error;
+        }
+
     }
 
 

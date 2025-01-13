@@ -1,16 +1,28 @@
 import { Application, Request, Response } from 'express';
+import { utilsService } from '../lib/utilities.service';
 
 
 
 export class IndexRoutes {
 
-    public routes(app: Application): void {
+    public createRoutes(app: Application): void {
 
 
         app.route('/')
             .get(async (req: Request, res: Response) => {
 
-                return res.status(200).send({ message: 'Hi, this is the personal toolbox API that created by Tsalmas Anastasios! Have fun and enjoy it!' });
+                // -------------------------- REQUEST DATA --------------------------
+                //  NONE
+
+
+
+                if (req?.session?.user?.account_id)
+                    return res.status(200).send({
+                        message: 'You are successfully authenticated to use the system!',
+                        user: req.session.user,
+                    });
+
+                return res.status(200).send({ message: 'Hi, you are unauthorized to have access in this system!', pass: utilsService.generateHash('vGwjoD^teYSAA*XgQ7rN'), });
 
             });
 
