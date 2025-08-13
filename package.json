@@ -5,6 +5,10 @@
   "main": "dist/app.js",
   "scripts": {
     "grunt": "grunt",
+    "build": "npm run grunt",
+    "install-packages": "npm uninstall graphql && npm install && npm install graphql@16",
+    "compile": "npm run grunt && npm run grunt watch",
+    "build-watch": "npm run grunt watch",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -18,7 +22,7 @@
   "homepage": "https://schillz.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Tsalmas-Anastasios/clients-agency-management-app-backend"
+    "url": ""
   },
   "license": "ISC",
   "dependencies": {
