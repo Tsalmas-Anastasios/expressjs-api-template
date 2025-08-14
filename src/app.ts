@@ -8,6 +8,8 @@ import * as expressMySqlSession from 'express-mysql-session';
 import * as passport from 'passport';
 require('dotenv').config();
 
+import { config } from './config';
+
 import { Account } from './models';
 
 import { utilsService } from './lib/utilities.service';
@@ -63,22 +65,10 @@ class App {
         this.app.use(express.json({ limit: '32mb' })); // support application/json type post data
         this.app.use(express.urlencoded({ extended: false, limit: '32mb' })); // support application/x-www-form-urlencoded post data
 
-        // this.server.use(express.static(utils.path.join(__dirname, 'public')));               // for production mode
 
-
-        // Handle user sessions
-        const mySQLSessionStore = expressMySqlSession(session);
-        const sessionStore = new mySQLSessionStore({
-            checkExpirationInterval: 900000, // clear expired sessions every 15 minutes
-            schema: {
-                tableName: 'sessions',
-                columnNames: {
-                    session_id: 'sid',
-                    expires: 'expires',
-                    data: 'data'
-                }
-            }
-        }, accountsDb._mysql.createPool(accountsDb.poolConfig));
+        // connect the front-end part for production. If you DON'T need it, please deactivate it
+        if (config?.production)
+            this.app.use(express.static(utils.path.join(__dirname, 'public')));
 
 
         this.app.use(session({ // https://www.npmjs.com/package/express-session
@@ -92,7 +82,17 @@ class App {
             },
             saveUninitialized: false,
             resave: true,
-            store: sessionStore, // session store
+            store: new mySQLSessionStore({
+                    checkExpirationInterval: 900000, // clear expired sessions every 15 minutes
+                    schema: {
+                        tableName: 'sessions',
+                        columnNames: {
+                            session_id: 'sid',
+                            expires: 'expires',
+                            data: 'data'
+                        }
+                    }
+                }, utilsService.database.accounts._mysql.createPool(utilsService.database.accounts.poolConfig)), // session store
             genid: (req: express.Request) => uuidv4()
         }));
 
@@ -111,7 +111,7 @@ class App {
                 return callback(null, true);
             },
             credentials: true,
-            methods: ['GET', 'POST', 'PUT', 'DELETE'],
+            methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'PORT', 'DELETE'],
         }));
 
         this.app.use(async (req: express.Request, res: express.Response, next: express.NextFunction) => {

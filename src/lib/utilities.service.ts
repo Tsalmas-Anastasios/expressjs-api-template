@@ -8,10 +8,19 @@ import * as fs from 'fs';
 import * as jwt from 'jsonwebtoken';
 import * as chalk from 'chalk';
 import * as passport from 'passport';
+import axios from 'axios';
 import { accountsDb } from './connectors/db/accounts-db';
 import { check_user_logged_in } from './middlewares/check-user-logged-in.middleware';
 import { config } from '../config';
 import slugify from 'slugify';
+import { AuthenticationLoggerService } from './loggers/authentication.service';
+import { stringValidator } from './stringValidator.service';
+import { stringElot743ManipulationService } from './string-elot743.service';
+import { mailServer } from './connectors/mailServer';
+import { ErrorHandlerService } from './error-handlers.service';
+import { IdentifierGenerator } from './generators/id-numbers/generate-id.service';
+
+
 require('dotenv').config();
 
 
@@ -27,11 +36,36 @@ class UtilsService {
     public slugify;
     public chalk;
     public passport;
+    public bcrypt;
+    public axios;
+
+    public database: {
+        accounts;
+        // data;
+    }
+
+    public log: {
+        authentication: AuthenticationLoggerService;            // TODO: change me with real type of data: AuthenticationLoggerService;
+    }
+
+    public stringValidator;
+    public elot743: {
+        greek_to_english;
+    };
+    public mailServer;
 
 
     /** Middleware function for checking if user's session exist */
     public checkAuth;
 
+
+    // generators
+    public generate: {
+        id;
+    };
+
+    // error handlers
+    public errorHandle: any;        // TODO: change me with real type of data: ErrorHandleService;
 
 
 
@@ -44,9 +78,36 @@ class UtilsService {
         this.slugify = slugify;
         this.chalk = chalk;
         this.passport = passport;
+        this.bcrypt = bcrypt;
+        this.axios = axios;
+
+
+        this.database = {
+            accounts: accountsDb,
+        };
+
+        this.log = {
+            authentication: new AuthenticationLoggerService()
+        };
+
+        this.stringValidator = stringValidator;
+        this.elot743 = {
+            greek_to_english: stringElot743ManipulationService,
+        };
+        this.mailServer = mailServer;
 
         /** Middleware function for checking if user's session exist */
         this.checkAuth = check_user_logged_in;
+
+
+        // generators
+        this.generate = {
+            id: new IdentifierGenerator().idGenerator
+        };
+
+        // error handlers
+        this.errorHandle = new ErrorHandlerService();
+
     }
 
 
@@ -59,7 +120,7 @@ class UtilsService {
 
     /** Generates hashed version of a string (e.g. hash of user's password)  */
     generateHash(value: string): string {
-        const salt = bcrypt.genSaltSync(12);
+        const salt = bcrypt.genSaltSync(12);            // TODO: change the salt number with one that you like, recommended: 12
         const hash = bcrypt.hashSync(value, salt);
         return hash;
     }
@@ -296,7 +357,11 @@ class UtilsService {
         let html_template = this.fs.readFileSync(this.path.join(__dirname, `../ui/email-templates/${data.template_name}.html`), 'utf8').toString();
 
         for (const prop in data.data)
-            html_template = html_template.replace(new RegExp(`{{${prop}}}`, 'g'), data.data[prop]);
+            html_template = html_template
+                .replace(new RegExp(`{{${prop}}}`, 'g'), data.data[prop])
+                .replace(new RegExp(`{{${prop} }}`, 'g'), data.data[prop])
+                .replace(new RegExp(`{{ ${prop}}}`, 'g'), data.data[prop])
+                .replace(new RegExp(`{{ ${prop} }}`, 'g'), data.data[prop]);
 
 
         return html_template;
@@ -309,9 +374,13 @@ class UtilsService {
     /** create graphql sql query */
     createGraphqlSQLQuery(args: any, context?: any): { limit: number, offset: number, query_string: string } {
 
-        const queryParams: { limit: number, offset: number, query_string: string } = { limit: 100, offset: 0, query_string: '' };
+        const queryParams: {
+            limit: number,
+            offset: number,
+            query_string: string
+        } = { limit: args?.limit || context?.limit || 100, offset: 0, query_string: '' };
 
-        if (args?.page || context?.query?.page) { // page = 3
+        if (typeof args?.page !== undefined || typeof context?.query?.page !== undefined) { // page = 3
 
             const page: number = args.page ? args.page : context?.query?.page ? parseInt(context.query.page) : 1;
 
@@ -321,9 +390,9 @@ class UtilsService {
                 queryParams.offset = (page - 1) * queryParams.limit;
 
             delete args.page;
+            delete args.limit;
 
         }
-
 
 
         if (args && !this.lodash.isEmpty(args)) {
@@ -331,15 +400,15 @@ class UtilsService {
             for (const key in args)
                 if (args[key] !== null && args[key] !== 'null')
                     if (typeof args[key] === 'number')
-                        queryParams.query_string += `AND ${key} = ${args[key]}`;
-                    else
-                        queryParams.query_string += `AND ${key} = '${args[key]}'`;
+                        queryParams.query_string += `AND ${ key } = ${ args[key] }`;
+                    else if (typeof args[key] === 'string')
+                        queryParams.query_string += `AND ${ key } = '${ args[key] }'`;
+                    else if (typeof args[key] === 'boolean')
+                        queryParams.query_string += `AND ${ key } = ${ args[key] ? '1' : '0' }`;
 
             queryParams.query_string = queryParams.query_string.replace(/^.{4}/g, '');
 
         }
-
-
 
 
         return queryParams;
@@ -353,13 +422,14 @@ class UtilsService {
 
         let graphQueryParams = '';
 
-        if (params && !utilsService.lodash.isEmpty(params)) {
+        if (params && !this.lodash.isEmpty(params)) {
 
             graphQueryParams += '(';
 
             // tslint:disable-next-line:curly
             let i = 0;
             for (const key in params) {
+
                 if (i > 0)
                     graphQueryParams += ',';
 
@@ -408,6 +478,19 @@ class UtilsService {
             return params.req.session.user.account_id;
 
         return params.account_id;
+
+    }
+
+
+    parseSQLQuery(data: { query_name: string, query_path?: string }): string {
+
+        let query_template: string;
+        if (data?.query_path)
+            query_template = this.fs.readFileSync(this.path.join(__dirname, `../sql/${ data.query_path }/${ data.query_name }.sql`), 'utf8').toString();
+        else
+            query_template = this.fs.readFileSync(this.path.join(__dirname, `../sql/${ data.query_name }.sql`), 'utf8').toString();
+
+        return query_template;
 
     }
 
