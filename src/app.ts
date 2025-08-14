@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as cors from 'cors';
 import * as morgan from 'morgan';
 import * as https from 'https';
+import * as http from 'http';
 import * as expressMySqlSession from 'express-mysql-session';
 import * as passport from 'passport';
 require('dotenv').config();
@@ -17,6 +18,7 @@ import { accountsDb } from './lib/connectors/db/accounts-db';
 import { initializePassportLocalStrategy } from './lib/authenticators/passport-local.mw';
 
 import { auditLoggerInterceptResponse } from './lib/middlewares/logger-interception-response.middleware';
+import { setupSwagger } from './openapi/swagger';
 import { startupDevelopmentModeFunctions } from './lib/startup-functions/dev.service';
 
 import { IndexRoutes } from './routes/index';
@@ -150,6 +152,9 @@ class App {
         initializePassportLocalStrategy.initPassport(this.app);
 
 
+        // start-setup the swagger here
+        setupSwagger(this.app);
+
 
 
         // Start express server
@@ -161,23 +166,28 @@ class App {
             }, this.app);
 
             https_server.listen(this.app.get('PORT'), async () => {
-                await startupDevelopmentModeFunctions.deleteResponseHistory();      // delete response_log from database
-                await startupDevelopmentModeFunctions.deleteSystemErrorsHistory();  // delete system errors from database
+                await startupDevelopmentModeFunctions.deleteResponseHistory();                      // delete response_log from database
+                await startupDevelopmentModeFunctions.deleteSystemErrorsHistory();                  // delete system errors from database
+                await startupDevelopmentModeFunctions.deleteLoginGeolocationDetailsHistory();       // delete login geolocation details from database
 
-                console.log(utilsService.chalk.bold(`Schillz App - Copyright 20[2-9][0-9] - Aespherra`));
-                console.log(`https://schillz.com`);
-                console.log(`https://aespherra.com`);
+                console.log(utilsService.chalk.bold(`Express API Template - Copyright 20[2-9][0-9] - Anastasios Tsalmas`));
+                console.log(`https://tsalmas.com`);
                 console.log(`Server is running on port: ${this.app.get('PORT')} (https://localhost:${this.app.get('PORT')})`);
                 console.log('');
                 console.log('');
             });
 
-        } else
-            this.app.listen(this.app.get('PORT'), () => {
-                console.log(utilsService.chalk.bold(`Schillz App - Copyright 20[2-9][0-9] - Aespherra`));
-                console.log(`https://schillz.com`);
-                console.log(`https://aespherra.com`);
+        } else {
+
+            const http_server = http.createServer(this.app);
+
+            http_server.listen(this.app.get('PORT'), () => {
+                console.log(utilsService.chalk.bold(`Express API Template - Copyright 20[2-9][0-9] - Anastasios Tsalmas`));
+                console.log(`https://tsalmas.com`);
             });
+
+        }
+
 
     }
 

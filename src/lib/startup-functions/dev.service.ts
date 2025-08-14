@@ -47,6 +47,28 @@ class StartupDevelopmentModeFunctions {
     }
 
 
+
+    public async deleteLoginGeolocationDetailsHistory(): Promise<any> {
+
+        console.log('');
+        console.log(`Delete ${utilsService.chalk.bold('login geolocation details')} history from dev database...`);
+
+
+        try {
+            const delete_response = await utilsService.database.accounts.query('DELETE FROM login_geolocation_details');
+
+            console.log(utilsService.chalk.green.bold('Deletion completed successfully'));
+            console.log('');
+            console.log('----------------------------------------------------------------');
+            console.log('');
+        } catch (error) {
+            console.log(utilsService.chalk.red.bold('!!! Error occurred while deleting the history !!!'));
+            console.log('Abort the process and try again!');
+        }
+
+    }
+
+
 }
 
 
