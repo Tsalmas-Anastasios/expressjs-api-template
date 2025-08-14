@@ -1,9 +1,10 @@
 import { Application, Request, Response } from 'express';
 import { utilsService } from '../lib/utilities.service';
+import { CreateRoutes } from '../interfaces';
 
 
 
-export class IndexRoutes {
+export class IndexRoutes implements CreateRoutes {
 
     public createRoutes(app: Application): void {
 

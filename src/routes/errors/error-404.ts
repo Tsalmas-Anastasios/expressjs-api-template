@@ -1,8 +1,8 @@
 import { Application, Request, Response } from 'express';
+import { CreateRoutes } from '../../interfaces';
 
 
-
-export class Error404Routes {
+export class Error404Routes implements CreateRoutes {
 
 
     public createRoutes(app: Application): void {

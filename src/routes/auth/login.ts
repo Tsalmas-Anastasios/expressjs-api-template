@@ -3,10 +3,10 @@ import { utilsService } from '../../lib/utilities.service';
 import { accountsDb } from '../../lib/connectors/db/accounts-db';
 import { Account, LoginGeolocationDetails } from '../../models';
 import { sessionDataGetService } from '../../lib/session.service';
+import { CreateRoutes } from '../../interfaces';
 
 
-
-export class AuthLoginRoutes {
+export class AuthLoginRoutes implements CreateRoutes {
 
 
     public createRoutes(app: Application) {
